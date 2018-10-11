@@ -229,6 +229,13 @@ void		textsetselect(Text*, uint, uint);
 void		textshow(Text*, uint, uint, int);
 void		texttype(Text*, Rune);
 
+enum
+{
+	SPACESINDENT	= 0,
+	AUTOINDENT,
+	NINDENT,
+};
+
 struct Window
 {
 	QLock	lk;
@@ -240,7 +247,7 @@ struct Window
 	uchar	isscratch;
 	uchar	filemenu;
 	uchar	dirty;
-	uchar	autoindent;
+	uchar	indent[NINDENT];
 	uchar	showdel;
 	int		id;
 	Range	addr;
@@ -553,7 +560,7 @@ extern char		wdir[]; /* must use extern because no dimension given */
 extern int			editing;
 extern int			erroutfd;
 extern int			messagesize;		/* negotiated in 9P version setup */
-extern int			globalautoindent;
+extern int			globalindent[NINDENT];
 extern int			dodollarsigns;
 extern char*		mtpt;
 
