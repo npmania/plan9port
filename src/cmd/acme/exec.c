@@ -1401,8 +1401,8 @@ static int
 indentval(Rune *s, int n, int type)
 {
 	static char *strs[] = {
-		[SPACESINDENT] "Spaces",
-		[AUTOINDENT] "Indent",
+		[SPACESINDENT] = "Spaces",
+		[AUTOINDENT] = "Indent",
 	};
 
 	if(n < 2)
