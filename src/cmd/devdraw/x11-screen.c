@@ -10,6 +10,7 @@
 #include <mouse.h>
 #include <cursor.h>
 #include <thread.h>
+#include <locale.h>
 #include "x11-memdraw.h"
 #include "devdraw.h"
 #include "bigarrow.h"
@@ -61,6 +62,12 @@ static ClientImpl x11impl = {
 	rpc_bouncemouse,
 	rpc_flush
 };
+
+static XIC xic;
+static XIM xim;
+static XPoint spot;
+static XVaNestedList spotlist;
+
 
 static Xwin*
 newxwin(Client *c)
@@ -163,6 +170,8 @@ gfx_main(void)
 	/*
 	 * Connect to X server.
 	 */
+        setlocale(LC_CTYPE, "");
+        XSetLocaleModifiers("");
 	_x.display = XOpenDisplay(NULL);
 	if(_x.display == nil){
 		disp = getenv("DISPLAY");
@@ -309,6 +318,8 @@ xloop(void)
 		xlock();
 		while(XPending(_x.display)) {
 			XNextEvent(_x.display, &event);
+			if (XFilterEvent(&event, None))
+				  continue;
 			runxevent(&event);
 		}
 	}
@@ -324,6 +335,9 @@ runxevent(XEvent *xev)
 {
 	int c;
 	int modp;
+	char buf[64]; 
+	Rune rbuf[64];
+	Status status;
 	KeySym k;
 	static Mouse m;
 	XButtonEvent *be;
@@ -371,8 +385,14 @@ runxevent(XEvent *xev)
 	case KeyPress:
 		w = findxwin(((XKeyEvent*)xev)->window);
 		break;
-	case FocusOut:
 	case FocusIn:
+		if (xic)
+			XSetICFocus(xic);
+		w = findxwin(((XFocusChangeEvent*)xev)->window);
+		break;
+	case FocusOut:
+		if (xic)
+			XUnsetICFocus(xic);
 		w = findxwin(((XFocusChangeEvent*)xev)->window);
 		break;
 	case MapNotify:
@@ -447,8 +467,16 @@ runxevent(XEvent *xev)
 	case KeyRelease:
 	case KeyPress:
 		ke = (XKeyEvent*)xev;
-		XLookupString(ke, NULL, 0, &k, NULL);
+		if (xic && xev->type == KeyPress) {
+			bzero(buf, 64);
+			int len = Xutf8LookupString(xic, ke, buf, sizeof buf, &k, &status);
+			if(len > 0)
+				runesnprint(rbuf, 64, "%s", buf);
+		} else 
+			XLookupString(ke, NULL, 0, &k, NULL);
+
 		c = ke->state;
+
 		switch(k) {
 		case XK_Alt_L:
 		case XK_Meta_L:	/* Shift Alt on PCs */
@@ -521,8 +549,20 @@ runxevent(XEvent *xev)
 			_xmovewindow(w, w->fullscreen ? w->screenrect : w->windowrect);
 			return;
 		}
+
+		if(xic && xev->type == KeyPress) {
+			int nr = runestrlen(rbuf);
+			if (status == XLookupChars && nr > 0 ) {
+				int i = 0;
+				while(i < nr) {
+					gfx_keystroke(w->client, rbuf[i++]);
+				}
+			}
+		}
+
 		if((c = _xtoplan9kbd(xev)) < 0)
 			return;
+
 		gfx_keystroke(w->client, c);
 		break;
 
@@ -656,6 +696,17 @@ xattach(Client *client, char *label, char *winsize)
 		&attr		/* attributes (the above aren't?!) */
 	);
 	XSelectInput(_x.display, w->drawable, StructureNotifyMask | PropertyChangeMask);
+
+        /* input methods */
+        xim = XOpenIM(_x.display, 0, 0, 0);
+        spotlist = XVaCreateNestedList(0, XNSpotLocation, &spot,
+                                              NULL);
+
+        if (xim)
+                xic = XCreateIC(xim, 
+				XNInputStyle, XIMPreeditNothing|XIMStatusNothing, 
+				XNClientWindow, w->drawable, 
+				NULL);
 
 	/*
 	 * Label and other properties required by ICCCCM.
